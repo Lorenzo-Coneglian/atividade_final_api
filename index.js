@@ -6,6 +6,11 @@ const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./database.db');
 db.run("PRAGMA foreign_keys = ON");
 
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const SECRET = "123456789";
+let usuarios = [];
+
 db.serialize(() => {
     db.run(`
         CREATE TABLE IF NOT EXISTS livros (
@@ -212,6 +217,32 @@ app.get('/api/livros/comentarios/:id', (req, res) => {
 
         res.status(200).json(livroProcurado);
     });
+});
+
+app.post('/api/auth/register', async (req, res) => {
+    const { email, senha } = req.body;
+
+    if (!email || !senha) return res.status(400).json({ erro: "Email e senha obrigatórios" });
+
+    const hash = await bcrypt.hash(senha, 10);
+
+    usuarios.push({ email, senha: hash });
+
+    res.status(201).json({ mensagem: "Usuário criado" });
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    const { email, senha } = req.body;
+
+    const user = usuarios.find(u => u.email === email);
+    if (!user) return res.status(404).json({ erro: "Usuário não encontrado" });
+
+    const valido = await bcrypt.compare(senha, user.senha);
+    if (!valido) return res.status(401).json({ erro: "Senha inválida" });
+
+    const token = jwt.sign({ email }, SECRET, { expiresIn: '1h' });
+
+    res.json({ token });
 });
 
 app.post('/api/livros', (req, res) => {
@@ -496,34 +527,41 @@ app.delete('/api/livros/resetar', (req, res) => {
 
         db.run("DELETE FROM livros", [], (err2) => {
             if (err2) return res.status(500).json(err2);
+            
+            db.get("SELECT COUNT(*) as total FROM livros", (err, row) => {
+                if (row.total === 0) {
+                    db.run(`INSERT INTO livros (titulo, autor, ano, genero, nota, fav) VALUES
+                        ("Alice no País das Maravilhas", "Lewis Carroll", 1865, "Nonsense", 5, 1),
+                        ("Alice Através do Espelho", "Lewis Carroll", 1871, "Nonsense", 4.7, 0),
+                        ("Wicked", "Gregory Maguire", 1995, "Fantasia", 4.2, 0),
+                        ("O Pequeno Príncipe", "Antoine de Saint-Exupéry", 1943, "Infanto-Juvenil", 5, 0),
+                        ("Percy Jackson e o Ladrão de Raios", "Rick Riordan", 2005, "Fantasia", 4.7, 0),
+                        ("O Mágico de Oz", "L. Frank Baum", 1900, "Fantasia", 4.6, 0),
+                        ("A Divina Comédia", "Dante Alighieri", 1321, "Ficção", 4.7, 1),
+                        ("Memórias Póstumas de Brás Cubas", "Machado de Assis", 1881, "Ficção", 5, 0),
+                        ("Dom Casmurro", "Machado de Assis", 1899, "Ficção", 4.9, 0),
+                        ("Quincas Borba", "Machado de Assis", 1891, "Ficção", 4.8, 0),
+                        ("Harry Potter e a Pedra Filosofal", "J.K. Rowling", 1997, "Fantasia", 4.9, 0),
+                        ("Harry Potter e a Câmara Secreta", "J.K. Rowling", 1998, "Fantasia", 4.8, 0),
+                        ("O Hobbit", "J.R.R. Tolkien", 1937, "Fantasia", 4.9, 0),
+                        ("O Senhor dos Anéis", "J.R.R. Tolkien", 1954, "Fantasia", 5, 0),
+                        ("Coraline", "Neil Gaiman", 2002, "Fantasia", 4.6, 0),
+                        ("As Crônicas de Nárnia", "C.S. Lewis", 1950, "Fantasia", 4.7, 0),
+                        ("Frankenstein", "Mary Shelley", 1818, "Ficção", 4.5, 0),
+                        ("Drácula", "Bram Stoker", 1897, "Ficção", 4.6, 0),
+                        ("1984", "George Orwell", 1949, "Ficção", 4.8, 1),
+                        ("A Revolução dos Bichos", "George Orwell", 1945, "Ficção", 4.7, 0)
+                    `, (err3) => {
+                        if (err3) return res.status(500).json(err3);
+
+                        res.status(200).json({
+                            mensagem: "Banco resetado",
+                            livros_antigos: rows
+                        });
+                    });
+                }
+            });
         });
-
-        if (rows.lenght === 0) {
-            db.run(`INSERT INTO livros (titulo, autor, ano, genero, nota, fav) VALUES
-                ("Alice no País das Maravilhas", "Lewis Carroll", 1865, "Nonsense", 5, 1),
-                ("Alice Através do Espelho", "Lewis Carroll", 1871, "Nonsense", 4.7, 0),
-                ("Wicked", "Gregory Maguire", 1995, "Fantasia", 4.2, 0),
-                ("O Pequeno Príncipe", "Antoine de Saint-Exupéry", 1943, "Infanto-Juvenil", 5, 0),
-                ("Percy Jackson e o Ladrão de Raios", "Rick Riordan", 2005, "Fantasia", 4.7, 0),
-                ("O Mágico de Oz", "L. Frank Baum", 1900, "Fantasia", 4.6, 0),
-                ("A Divina Comédia", "Dante Alighieri", 1321, "Ficção", 4.7, 1),
-                ("Memórias Póstumas de Brás Cubas", "Machado de Assis", 1881, "Ficção", 5, 0),
-                ("Dom Casmurro", "Machado de Assis", 1899, "Ficção", 4.9, 0),
-                ("Quincas Borba", "Machado de Assis", 1891, "Ficção", 4.8, 0),
-                ("Harry Potter e a Pedra Filosofal", "J.K. Rowling", 1997, "Fantasia", 4.9, 0),
-                ("Harry Potter e a Câmara Secreta", "J.K. Rowling", 1998, "Fantasia", 4.8, 0),
-                ("O Hobbit", "J.R.R. Tolkien", 1937, "Fantasia", 4.9, 0),
-                ("O Senhor dos Anéis", "J.R.R. Tolkien", 1954, "Fantasia", 5, 0),
-                ("Coraline", "Neil Gaiman", 2002, "Fantasia", 4.6, 0),
-                ("As Crônicas de Nárnia", "C.S. Lewis", 1950, "Fantasia", 4.7, 0),
-                ("Frankenstein", "Mary Shelley", 1818, "Ficção", 4.5, 0),
-                ("Drácula", "Bram Stoker", 1897, "Ficção", 4.6, 0),
-                ("1984", "George Orwell", 1949, "Ficção", 4.8, 1),
-                ("A Revolução dos Bichos", "George Orwell", 1945, "Ficção", 4.7, 0);
-            `);
-        }
-
-        res.status(200).json(rows);
     });
 });
 
@@ -532,11 +570,29 @@ app.delete('/api/livros/deletar-tudo', (req, res) => {
         if (err) return res.status(500).json(err);
 
         db.run("DELETE FROM livros", [], (err2) => {
-            if (err2) return res.status(500).json({err2: err2});
-
-            res.status(200).json(rows);
+            if (err2) return res.status(500).json(err2);
+            res.status(200).json({
+                mensagem: "Todos os dados deletados",
+                livros_removidos: rows
+            });
         });
     });
 });
+
+function autenticar(req, res, next) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) return res.status(401).json({ erro: "Token não enviado" });
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+        const decoded = jwt.verify(token, SECRET);
+        req.user = decoded;
+        next();
+    } catch {
+        res.status(401).json({ erro: "Token inválido" });
+    }
+}
 
 app.listen(3000, () => console.log('API rodando na porta 3000'));
